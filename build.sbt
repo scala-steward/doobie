@@ -596,6 +596,7 @@ lazy val refined = project
     .settings(doobieSettings)
     .settings(publishSettings)
     .settings(
+      crossScalaVersions -= scala213Version, // until quill is out for 2.13
       name := "doobie-quill",
       description := "Quill support for doobie.",
       libraryDependencies ++= Seq(
