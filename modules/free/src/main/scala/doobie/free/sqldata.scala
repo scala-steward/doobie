@@ -157,6 +157,7 @@ object sqldata { module =>
   def cancelable[A](fa: SQLDataIO[A], fin: SQLDataIO[Unit]) = FF.liftF[SQLDataOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[SQLDataOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for SQLData-specific operations.
   val getSQLTypeName: SQLDataIO[String] = FF.liftF(GetSQLTypeName)
   def readSQL(a: SQLInput, b: String): SQLDataIO[Unit] = FF.liftF(ReadSQL(a, b))

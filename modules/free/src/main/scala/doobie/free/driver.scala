@@ -175,6 +175,7 @@ object driver { module =>
   def cancelable[A](fa: DriverIO[A], fin: DriverIO[Unit]) = FF.liftF[DriverOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[DriverOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for Driver-specific operations.
   def acceptsURL(a: String): DriverIO[Boolean] = FF.liftF(AcceptsURL(a))
   def connect(a: String, b: Properties): DriverIO[Connection] = FF.liftF(Connect(a, b))

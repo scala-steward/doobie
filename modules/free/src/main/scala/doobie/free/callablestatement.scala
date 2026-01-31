@@ -1097,6 +1097,7 @@ object callablestatement { module =>
   def cancelable[A](fa: CallableStatementIO[A], fin: CallableStatementIO[Unit]) = FF.liftF[CallableStatementOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[CallableStatementOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for CallableStatement-specific operations.
   val addBatch: CallableStatementIO[Unit] = FF.liftF(AddBatch)
   def addBatch(a: String): CallableStatementIO[Unit] = FF.liftF(AddBatch1(a))
