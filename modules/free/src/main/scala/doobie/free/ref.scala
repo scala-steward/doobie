@@ -159,6 +159,7 @@ object ref { module =>
   def cancelable[A](fa: RefIO[A], fin: RefIO[Unit]) = FF.liftF[RefOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[RefOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for Ref-specific operations.
   val getBaseTypeName: RefIO[String] = FF.liftF(GetBaseTypeName)
   val getObject: RefIO[AnyRef] = FF.liftF(GetObject)

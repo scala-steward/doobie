@@ -174,6 +174,7 @@ object copyout { module =>
   def cancelable[A](fa: CopyOutIO[A], fin: CopyOutIO[Unit]) = FF.liftF[CopyOutOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[CopyOutOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for CopyOut-specific operations.
   val cancelCopy: CopyOutIO[Unit] = FF.liftF(CancelCopy)
   val getFieldCount: CopyOutIO[Int] = FF.liftF(GetFieldCount)

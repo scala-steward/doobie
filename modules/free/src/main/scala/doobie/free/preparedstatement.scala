@@ -10,11 +10,10 @@ import cats.{~>, Applicative, Semigroup, Monoid}
 import cats.effect.kernel.{ CancelScope, Poll, Sync }
 import cats.free.{ Free as FF } // alias because some algebras have an op called Free
 import doobie.util.log.LogEvent
-import doobie.util.trace.TraceEvent
 import doobie.WeakAsync
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
-
+import doobie.util.trace.TraceEvent
 import java.io.InputStream
 import java.io.Reader
 import java.lang.Class
@@ -84,7 +83,6 @@ object preparedstatement { module =>
       def cancelable[A](fa: PreparedStatementIO[A], fin: PreparedStatementIO[Unit]): F[A]
       def performLogging(event: LogEvent): F[Unit]
       def trace[A](event: TraceEvent, fa: PreparedStatementIO[A]): F[A]
-
       // PreparedStatement
       def addBatch: F[Unit]
       def addBatch(a: String): F[Unit]
@@ -254,7 +252,6 @@ object preparedstatement { module =>
     case class Trace[A](event: TraceEvent, fa: PreparedStatementIO[A]) extends PreparedStatementOp[A] {
       def visit[F[_]](v: Visitor[F]) = v.trace(event, fa)
     }
-
     // PreparedStatement-specific operations.
     case object AddBatch extends PreparedStatementOp[Unit] {
       def visit[F[_]](v: Visitor[F]) = v.addBatch

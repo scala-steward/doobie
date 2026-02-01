@@ -100,6 +100,29 @@ class FreeGen2(
         }
     }
 
+  case class Extra(
+      imports: String,
+      visitorMethod: String,
+      visitorCaseClass: String,
+      smartConstructor: String,
+      intepreterMethod: String
+  )
+
+  val extras: Map[String, Extra] = Map(
+    "PreparedStatement" -> Extra(
+      imports = "import doobie.util.trace.TraceEvent",
+      visitorMethod = "def trace[A](event: TraceEvent, fa: PreparedStatementIO[A]): F[A]",
+      visitorCaseClass =
+        """case class Trace[A](event: TraceEvent, fa: PreparedStatementIO[A]) extends PreparedStatementOp[A] {
+          |  def visit[F[_]](v: Visitor[F]) = v.trace(event, fa)
+          |}""".stripMargin,
+      smartConstructor =
+        "def trace[A](event: TraceEvent, a: PreparedStatementIO[A]) = FF.liftF[PreparedStatementOp, A](Trace(event, a))",
+      intepreterMethod =
+        "override def trace[A](event: TraceEvent, fa: PreparedStatementIO[A]): Kleisli[M, PreparedStatement, A] = outer.trace(event, this)(fa)"
+    )
+  )
+
   // Each constructor for our algebra maps to an underlying method, and an index is provided to
   // disambiguate in cases of overloading.
   case class Ctor(method: Method, index: Int) {
@@ -243,6 +266,8 @@ class FreeGen2(
     val opname = s"${oname}Op"
     val ioname = s"${oname}IO"
     val mname = oname.toLowerCase
+    val extra = extras.get(oname)
+
     s"""
     |
     |// format: off
@@ -256,7 +281,7 @@ class FreeGen2(
     |import doobie.WeakAsync
     |import scala.concurrent.Future
     |import scala.concurrent.duration.FiniteDuration
-    |
+    |${extra.map(_.imports).mkString("\n")}
     |${imports[A](excludeImports = allImportExcludes).mkString("\n")}
     |
     |// This file is Auto-generated using FreeGen2.scala
@@ -302,7 +327,7 @@ class FreeGen2(
     |      def fromFutureCancelable[A](fut: ${ioname}[(Future[A], ${ioname}[Unit])]): F[A]
     |      def cancelable[A](fa: ${ioname}[A], fin: ${ioname}[Unit]): F[A]
     |      def performLogging(event: LogEvent): F[Unit]
-    |
+    |${indentStr(extra.map(e => e.visitorMethod).mkString("\n"), 6)}
     |      // $sname
           ${ctors[A].map(_.visitor).mkString("\n    ")}
     |
@@ -357,7 +382,7 @@ class FreeGen2(
     |    case class PerformLogging(event: LogEvent) extends ${opname}[Unit] {
     |      def visit[F[_]](v: Visitor[F]) = v.performLogging(event)
     |    }
-    |
+    |${indentStr(extra.map(_.visitorCaseClass).mkString("\n"), 4)}
     |    // $sname-specific operations.
     |    ${ctors[A].map(_.ctor(opname)).mkString("\n    ")}
     |
@@ -386,6 +411,7 @@ class FreeGen2(
     |  def fromFutureCancelable[A](fut: ${ioname}[(Future[A], ${ioname}[Unit])]) = FF.liftF[${opname}, A](FromFutureCancelable(fut))
     |  def cancelable[A](fa: ${ioname}[A], fin: ${ioname}[Unit]) = FF.liftF[${opname}, A](Cancelable(fa, fin))
     |  def performLogging(event: LogEvent) = FF.liftF[${opname}, Unit](PerformLogging(event))
+    |${indentStr(extra.map(_.smartConstructor).mkString("\n"), 2)}
     |
     |  // Smart constructors for $oname-specific operations.
     |  ${ctors[A].map(_.lifted(ioname)).mkString("\n  ")}
@@ -474,6 +500,7 @@ class FreeGen2(
     val klesA = kles("A")
     val klesUnit = kles("Unit")
     val mname = oname.toLowerCase
+    val extra = extras.get(oname)
     s"""
        |  trait ${oname}Interpreter extends ${oname}Op.Visitor[Kleisli[M, $sname, *]] {
        |
@@ -488,7 +515,7 @@ class FreeGen2(
        |    override def canceled: $klesUnit = outer.canceled[${sname}]
        |
        |    override def performLogging(event: LogEvent): $klesUnit = Kleisli(_ => logHandler.run(event))
-       |
+       |${indentStr(extra.map(_.intepreterMethod).mkString("\n"), 4)}
        |    // for operations using ${ioname} we must call ourself recursively
        |    override def handleErrorWith[A](fa: ${ioname}[A])(f: Throwable => ${ioname}[A]): $klesA = outer.handleErrorWith(this)(fa)(f)
        |    override def forceR[A, B](fa: ${ioname}[A])(fb: ${ioname}[B]): ${kles("B")} = outer.forceR(this)(fa)(fb)
@@ -541,6 +568,7 @@ class FreeGen2(
        |import cats.free.Free
        |import doobie.WeakAsync
        |import doobie.util.log.{LogEvent, LogHandler}
+       |import doobie.util.trace.TraceEvent
        |import scala.concurrent.Future
        |import scala.concurrent.duration.FiniteDuration
        |
@@ -580,6 +608,11 @@ class FreeGen2(
        |  def canceled[J]: Kleisli[M, J, Unit] = Kleisli(_ => asyncM.canceled)
        |
        |  // for operations using free structures we call the interpreter recursively
+       |  def trace[G[_], J, A](event: TraceEvent, interpreter: G ~> Kleisli[M, J, *])(fa: Free[G, A]): Kleisli[M, J, A] = Kleisli { j =>
+       |    val _ = event
+       |    fa.foldMap(interpreter).run(j)
+       |  }
+       |
        |  def handleErrorWith[G[_], J, A](interpreter: G ~> Kleisli[M, J, *])(fa: Free[G, A])(f: Throwable => Free[G, A]): Kleisli[M, J, A] = Kleisli (j =>
        |    asyncM.handleErrorWith(fa.foldMap(interpreter).run(j))(f.andThen(_.foldMap(interpreter).run(j)))
        |  )
@@ -646,6 +679,14 @@ class FreeGen2(
       file
     }
     ki :: e :: fs
+  }
+
+  private def indentStr(str: String, numSpaces: Int): String = {
+    if (str.isEmpty) return ""
+    else {
+      val indents = " " * numSpaces
+      str.split("\n").toList.map(indents + _).mkString("\n")
+    }
   }
 
 }

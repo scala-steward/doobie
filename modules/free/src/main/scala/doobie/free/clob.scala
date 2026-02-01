@@ -199,6 +199,7 @@ object clob { module =>
   def cancelable[A](fa: ClobIO[A], fin: ClobIO[Unit]) = FF.liftF[ClobOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[ClobOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for Clob-specific operations.
   val free: ClobIO[Unit] = FF.liftF(Free)
   val getAsciiStream: ClobIO[InputStream] = FF.liftF(GetAsciiStream)

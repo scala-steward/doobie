@@ -13,6 +13,7 @@ import cats.effect.kernel.{ Poll, Sync }
 import cats.free.Free
 import doobie.WeakAsync
 import doobie.util.log.{LogEvent, LogHandler}
+import doobie.util.trace.TraceEvent
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
@@ -79,6 +80,11 @@ class KleisliInterpreter[M[_]](logHandler: LogHandler[M])(implicit val asyncM: W
   def canceled[J]: Kleisli[M, J, Unit] = Kleisli(_ => asyncM.canceled)
 
   // for operations using free structures we call the interpreter recursively
+  def trace[G[_], J, A](event: TraceEvent, interpreter: G ~> Kleisli[M, J, *])(fa: Free[G, A]): Kleisli[M, J, A] = Kleisli { j =>
+    val _ = event
+    fa.foldMap(interpreter).run(j)
+  }
+
   def handleErrorWith[G[_], J, A](interpreter: G ~> Kleisli[M, J, *])(fa: Free[G, A])(f: Throwable => Free[G, A]): Kleisli[M, J, A] = Kleisli (j =>
     asyncM.handleErrorWith(fa.foldMap(interpreter).run(j))(f.andThen(_.foldMap(interpreter).run(j)))
   )

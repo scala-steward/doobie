@@ -191,6 +191,7 @@ object copymanager { module =>
   def cancelable[A](fa: CopyManagerIO[A], fin: CopyManagerIO[Unit]) = FF.liftF[CopyManagerOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[CopyManagerOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for CopyManager-specific operations.
   def copyDual(a: String): CopyManagerIO[PGCopyDual] = FF.liftF(CopyDual(a))
   def copyIn(a: String): CopyManagerIO[PGCopyIn] = FF.liftF(CopyIn(a))

@@ -229,6 +229,7 @@ object largeobject { module =>
   def cancelable[A](fa: LargeObjectIO[A], fin: LargeObjectIO[Unit]) = FF.liftF[LargeObjectOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[LargeObjectOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for LargeObject-specific operations.
   val close: LargeObjectIO[Unit] = FF.liftF(Close)
   val copy: LargeObjectIO[LargeObject] = FF.liftF(Copy)

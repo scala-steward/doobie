@@ -899,7 +899,6 @@ class KleisliInterpreter[M[_]](logHandler: LogHandler[M])(implicit val asyncM: W
 
     override def performLogging(event: LogEvent): Kleisli[M, PreparedStatement, Unit] = Kleisli(_ => logHandler.run(event))
     override def trace[A](event: TraceEvent, fa: PreparedStatementIO[A]): Kleisli[M, PreparedStatement, A] = outer.trace(event, this)(fa)
-
     // for operations using PreparedStatementIO we must call ourself recursively
     override def handleErrorWith[A](fa: PreparedStatementIO[A])(f: Throwable => PreparedStatementIO[A]): Kleisli[M, PreparedStatement, A] = outer.handleErrorWith(this)(fa)(f)
     override def forceR[A, B](fa: PreparedStatementIO[A])(fb: PreparedStatementIO[B]): Kleisli[M, PreparedStatement, B] = outer.forceR(this)(fa)(fb)

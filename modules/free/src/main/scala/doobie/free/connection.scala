@@ -399,6 +399,7 @@ object connection { module =>
   def cancelable[A](fa: ConnectionIO[A], fin: ConnectionIO[Unit]) = FF.liftF[ConnectionOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[ConnectionOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for Connection-specific operations.
   def abort(a: Executor): ConnectionIO[Unit] = FF.liftF(Abort(a))
   val beginRequest: ConnectionIO[Unit] = FF.liftF(BeginRequest)

@@ -927,6 +927,7 @@ object resultset { module =>
   def cancelable[A](fa: ResultSetIO[A], fin: ResultSetIO[Unit]) = FF.liftF[ResultSetOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[ResultSetOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for ResultSet-specific operations.
   def absolute(a: Int): ResultSetIO[Boolean] = FF.liftF(Absolute(a))
   val afterLast: ResultSetIO[Unit] = FF.liftF(AfterLast)

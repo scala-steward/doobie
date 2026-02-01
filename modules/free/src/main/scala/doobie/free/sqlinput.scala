@@ -270,6 +270,7 @@ object sqlinput { module =>
   def cancelable[A](fa: SQLInputIO[A], fin: SQLInputIO[Unit]) = FF.liftF[SQLInputOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[SQLInputOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for SQLInput-specific operations.
   val readArray: SQLInputIO[SqlArray] = FF.liftF(ReadArray)
   val readAsciiStream: SQLInputIO[InputStream] = FF.liftF(ReadAsciiStream)

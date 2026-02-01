@@ -272,6 +272,7 @@ object sqloutput { module =>
   def cancelable[A](fa: SQLOutputIO[A], fin: SQLOutputIO[Unit]) = FF.liftF[SQLOutputOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[SQLOutputOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for SQLOutput-specific operations.
   def writeArray(a: SqlArray): SQLOutputIO[Unit] = FF.liftF(WriteArray(a))
   def writeAsciiStream(a: InputStream): SQLOutputIO[Unit] = FF.liftF(WriteAsciiStream(a))

@@ -188,6 +188,7 @@ object blob { module =>
   def cancelable[A](fa: BlobIO[A], fin: BlobIO[Unit]) = FF.liftF[BlobOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[BlobOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for Blob-specific operations.
   val free: BlobIO[Unit] = FF.liftF(Free)
   val getBinaryStream: BlobIO[InputStream] = FF.liftF(GetBinaryStream)

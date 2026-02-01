@@ -863,6 +863,7 @@ object databasemetadata { module =>
   def cancelable[A](fa: DatabaseMetaDataIO[A], fin: DatabaseMetaDataIO[Unit]) = FF.liftF[DatabaseMetaDataOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[DatabaseMetaDataOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for DatabaseMetaData-specific operations.
   val allProceduresAreCallable: DatabaseMetaDataIO[Boolean] = FF.liftF(AllProceduresAreCallable)
   val allTablesAreSelectable: DatabaseMetaDataIO[Boolean] = FF.liftF(AllTablesAreSelectable)

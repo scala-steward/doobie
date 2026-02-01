@@ -183,6 +183,7 @@ object copyin { module =>
   def cancelable[A](fa: CopyInIO[A], fin: CopyInIO[Unit]) = FF.liftF[CopyInOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[CopyInOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for CopyIn-specific operations.
   val cancelCopy: CopyInIO[Unit] = FF.liftF(CancelCopy)
   val endCopy: CopyInIO[Long] = FF.liftF(EndCopy)

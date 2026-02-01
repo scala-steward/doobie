@@ -200,6 +200,7 @@ object nclob { module =>
   def cancelable[A](fa: NClobIO[A], fin: NClobIO[Unit]) = FF.liftF[NClobOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[NClobOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for NClob-specific operations.
   val free: NClobIO[Unit] = FF.liftF(Free)
   val getAsciiStream: NClobIO[InputStream] = FF.liftF(GetAsciiStream)

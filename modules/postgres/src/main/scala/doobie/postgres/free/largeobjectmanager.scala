@@ -183,6 +183,7 @@ object largeobjectmanager { module =>
   def cancelable[A](fa: LargeObjectManagerIO[A], fin: LargeObjectManagerIO[Unit]) = FF.liftF[LargeObjectManagerOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[LargeObjectManagerOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for LargeObjectManager-specific operations.
   val createLO: LargeObjectManagerIO[Long] = FF.liftF(CreateLO)
   def createLO(a: Int): LargeObjectManagerIO[Long] = FF.liftF(CreateLO1(a))

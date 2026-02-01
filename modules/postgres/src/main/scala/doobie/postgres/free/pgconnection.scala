@@ -256,6 +256,7 @@ object pgconnection { module =>
   def cancelable[A](fa: PGConnectionIO[A], fin: PGConnectionIO[Unit]) = FF.liftF[PGConnectionOp, A](Cancelable(fa, fin))
   def performLogging(event: LogEvent) = FF.liftF[PGConnectionOp, Unit](PerformLogging(event))
 
+
   // Smart constructors for PGConnection-specific operations.
   def addDataType(a: String, b: Class[? <: org.postgresql.util.PGobject]): PGConnectionIO[Unit] = FF.liftF(AddDataType(a, b))
   def alterUserPassword(a: String, b: Array[Char], c: String): PGConnectionIO[Unit] = FF.liftF(AlterUserPassword(a, b, c))
