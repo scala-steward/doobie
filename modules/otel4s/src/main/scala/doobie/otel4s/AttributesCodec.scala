@@ -4,11 +4,54 @@
 
 package doobie.otel4s
 
-import org.typelevel.otel4s.{Attribute, AttributeKey, AttributeType, Attributes}
+import org.typelevel.otel4s.{AnyValue, Attribute, AttributeKey, AttributeType, Attributes}
 import io.circe.*
 import io.circe.syntax.*
+import scodec.bits.ByteVector
 
 private[doobie] object AttributesCodec {
+
+  implicit val anyValueEncoder: Encoder[AnyValue] =
+    new Encoder[AnyValue] { self =>
+      def apply(a: AnyValue): Json =
+        a match {
+          case string: AnyValue.StringValue       => Json.obj("string" := string.value)
+          case boolean: AnyValue.BooleanValue     => Json.obj("boolean" := boolean.value)
+          case long: AnyValue.LongValue           => Json.obj("long" := long.value)
+          case double: AnyValue.DoubleValue       => Json.obj("double" := double.value)
+          case byteArray: AnyValue.ByteArrayValue => Json.obj("bytes" := ByteVector(byteArray.value).toBase64)
+          case seq: AnyValue.SeqValue             => Json.obj("seq" := seq.value.map(self.apply))
+          case map: AnyValue.MapValue             => Json.obj("map" := map.value.view.mapValues(self.apply).toMap)
+          case _: AnyValue.EmptyValue             => Json.obj("empty" := Json.Null)
+        }
+    }
+
+  implicit val anyValueDecoder: Decoder[AnyValue] =
+    new Decoder[AnyValue] { self =>
+      def apply(c: HCursor): Decoder.Result[AnyValue] = {
+        val valueFields = c.keys.map(_.toList).getOrElse(Nil)
+
+        def decode[A: Decoder](field: String, make: A => AnyValue) =
+          c.get[A](field).map(v => make(v))
+
+        valueFields match {
+          case "string" :: Nil  => decode[String]("string", AnyValue.string)
+          case "boolean" :: Nil => decode[Boolean]("boolean", AnyValue.boolean)
+          case "double" :: Nil  => decode[Double]("double", AnyValue.double)
+          case "long" :: Nil    => decode[Long]("long", AnyValue.long)
+          case "bytes" :: Nil   =>
+            decode[String]("bytes", base64 => AnyValue.bytes(ByteVector.fromValidBase64(base64).toArray))
+          case "seq" :: Nil =>
+            decode[Seq[AnyValue]]("seq", AnyValue.seq)(Decoder.decodeSeq(self))
+          case "map" :: Nil =>
+            decode[Map[String, AnyValue]]("map", AnyValue.map)(Decoder.decodeMap(implicitly, self))
+          case "empty" :: Nil =>
+            Right(AnyValue.empty)
+          case other =>
+            Left(DecodingFailure(s"Unsupported AnyValue shape for key fields=$other", c.history))
+        }
+      }
+    }
 
   implicit val attributeEncoder: Encoder[Attribute[?]] =
     Encoder.instance { attribute =>
@@ -48,6 +91,7 @@ private[doobie] object AttributesCodec {
       case AttributeType.DoubleSeq  => encode[Seq[Double]]("doubleArrayValue")
       case AttributeType.StringSeq  => encode[Seq[String]]("stringArrayValue")
       case AttributeType.LongSeq    => encode[Seq[Long]]("longArrayValue")
+      case AttributeType.AnyValue   => encode[AnyValue]("anyValue")
     }
   }
 
@@ -66,6 +110,7 @@ private[doobie] object AttributesCodec {
       case "doubleArrayValue" :: Nil => decode[Seq[Double]]("doubleArrayValue")
       case "stringArrayValue" :: Nil => decode[Seq[String]]("stringArrayValue")
       case "longArrayValue" :: Nil   => decode[Seq[Long]]("longArrayValue")
+      case "anyValue" :: Nil         => decode[AnyValue]("anyValue")
       case other                     =>
         Left(DecodingFailure(s"Unsupported attribute value shape for key '$key', fields=$other", c.history))
     }
