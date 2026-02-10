@@ -42,9 +42,9 @@ private[doobie] object AttributesCodec {
           case "bytes" :: Nil   =>
             decode[String]("bytes", base64 => AnyValue.bytes(ByteVector.fromValidBase64(base64).toArray))
           case "seq" :: Nil =>
-            decode[Seq[AnyValue]]("seq", AnyValue.seq)(Decoder.decodeSeq(self))
+            decode[Seq[AnyValue]]("seq", AnyValue.seq)(using Decoder.decodeSeq(self))
           case "map" :: Nil =>
-            decode[Map[String, AnyValue]]("map", AnyValue.map)(Decoder.decodeMap(implicitly, self))
+            decode[Map[String, AnyValue]]("map", AnyValue.map)(using Decoder.decodeMap(implicitly, self))
           case "empty" :: Nil =>
             Right(AnyValue.empty)
           case other =>
