@@ -40,8 +40,8 @@ object query {
       */
     def sql: String
 
-    /** An optional [[Pos]] indicating the source location where this [[Query]] was constructed. This is used only for
-      * diagnostic purposes.
+    /** An optional [[doobie.util.pos.Pos]] indicating the source location where this [[Query]] was constructed. This is
+      * used only for diagnostic purposes.
       * @group Diagnostics
       */
     def pos: Option[Pos]

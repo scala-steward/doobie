@@ -46,8 +46,8 @@ object update {
       */
     val sql: String
 
-    /** An optional [[Pos]] indicating the source location where this [[Update]] was constructed. This is used only for
-      * diagnostic purposes.
+    /** An optional [[doobie.util.pos.Pos]] indicating the source location where this [[Update]] was constructed. This
+      * is used only for diagnostic purposes.
       * @group Diagnostics
       */
     val pos: Option[Pos]
@@ -297,8 +297,8 @@ object update {
       */
     val sql: String
 
-    /** An optional [[Pos]] indicating the source location where this [[Update0]] was constructed. This is used only for
-      * diagnostic purposes.
+    /** An optional [[doobie.util.pos.Pos]] indicating the source location where this [[Update0]] was constructed. This
+      * is used only for diagnostic purposes.
       * @group Diagnostics
       */
     val pos: Option[Pos]

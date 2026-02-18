@@ -33,7 +33,7 @@ package object doobie
       *   1. You're NOT using one of the database doobie has direct java.time isntances for (PostgreSQL / MySQL). (They
       *      have more accurate column type checks) 2. Your driver natively supports java.time.* types
       *
-      * If your driver doesn't support java.time.* types, use [[doobie.implicits.legacy.instant/localdate]] instead
+      * If your driver doesn't support java.time.* types, use `doobie.implicits.legacy.instant/localdate` instead
       */
     object javatimedrivernative extends TimeMetaInstances
   }

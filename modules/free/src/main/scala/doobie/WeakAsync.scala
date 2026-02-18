@@ -51,7 +51,7 @@ object WeakAsync {
   def liftK[F[_], G[_]](implicit F: Async[F], G: WeakAsync[G]): Resource[F, F ~> G] =
     Dispatcher.parallel[F].map(new Lifter(_))
 
-  /** Like [[liftK]] but specifically returns a [[LiftIO]] */
+  /** Like [[liftK]] but specifically returns a [[cats.effect.LiftIO]] */
   def liftIO[F[_]](implicit F: WeakAsync[F]): Resource[IO, LiftIO[F]] =
     Dispatcher.parallel[IO].map(new Lifter(_) with LiftIO[F] {
       def liftIO[A](ioa: IO[A]) = super[Lifter].apply(ioa)
