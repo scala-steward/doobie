@@ -64,10 +64,6 @@ ThisBuild / githubWorkflowBuild := {
     case other => other
   }
 }
-// Disable running CI for Pull Requests (a normal push already triggers CI)
-// We set an uncommon status instead of empty because passing an empty list seems to make
-// GHA use the default trigger event types..
-ThisBuild / githubWorkflowPREventTypes := Seq(PREventType.Locked)
 ThisBuild / githubWorkflowBuildPostamble ++= Seq(
   WorkflowStep.Sbt(
     commands = List("checkGitNoUncommittedChanges"),

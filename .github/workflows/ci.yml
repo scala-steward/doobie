@@ -10,7 +10,6 @@ name: Continuous Integration
 on:
   pull_request:
     branches: ['**', '!update/**', '!pr/**']
-    types: [locked]
   push:
     branches: ['**', '!update/**', '!pr/**']
     tags: [v*]

@@ -59,7 +59,7 @@ package testing {
     val header: String = show"$typeName defined at $location"
   }
 
-  /** Information from [[Analysis]], prepared for output. */
+  /** Information from [[doobie.util.analysis.Analysis]], prepared for output. */
   final case class AnalysisReport(
       header: String,
       sql: Block,

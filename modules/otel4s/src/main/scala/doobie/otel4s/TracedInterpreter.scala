@@ -217,7 +217,7 @@ object TracedInterpreter {
 
   trait Config {
 
-    /** The name of the [[TracerProvider]] scope to use for this interpreter.
+    /** The name of the [[org.typelevel.otel4s.trace.TracerProvider]] scope to use for this interpreter.
       */
     def tracerScopeName: String
 
@@ -421,7 +421,7 @@ object TracedInterpreter {
         *   }}}
         *
         * @param spanNameFromAttribute
-        *   the optional [[AttributeKey]] to use as the span name when decoding succeeds
+        *   the optional [[org.typelevel.otel4s.AttributeKey]] to use as the span name when decoding succeeds
         *
         * @param fallback
         *   the fallback [[CaptureLabel]] to use when decoding fails. If `None`, the label is discarded.

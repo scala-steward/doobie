@@ -109,7 +109,7 @@ object transactor {
     /** A `Strategy` for running a program on a connection * */
     def strategy: Strategy
 
-    /** Construct a [[Yolo]] for REPL experimentation. */
+    /** Construct a [[doobie.util.yolo.Yolo]] for REPL experimentation. */
     def yolo(implicit ev: Async[M]): Yolo[M] = new Yolo(this)
 
     /** Construct a program to perform arbitrary configuration on the kernel value (changing the timeout on a connection
