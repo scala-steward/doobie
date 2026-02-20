@@ -4,11 +4,13 @@
 
 package doobie.postgres
 
+import util.Properties.versionString
 import cats.effect.IO
 import com.zaxxer.hikari.HikariDataSource
 import doobie.*
 import doobie.implicits.*
 import doobie.util.transactor.Strategy
+import doobie.util.fragment.Fragment
 import fs2.Stream
 
 import java.sql.SQLTransientConnectionException
@@ -24,6 +26,8 @@ class StreamPrefetchSuite extends munit.FunSuite {
   private var dataSource: HikariDataSource = null
   private var xa: Transactor[IO] = null
   private val count = 100
+  private val testTable =
+    Fragment.const(s"stream_cancel_test_${versionString.replace('.', '_').replace("version ", "")}")
 
   private def createDataSource() = {
 
@@ -46,10 +50,10 @@ class StreamPrefetchSuite extends munit.FunSuite {
       ExecutionContext.fromExecutor(Executors.newFixedThreadPool(32))
     )
     val insert = for {
-      _ <- Stream.eval(sql"CREATE TABLE if not exists stream_cancel_test (i text)".update.run.transact(xa))
-      _ <- Stream.eval(sql"truncate table stream_cancel_test".update.run.transact(xa))
+      _ <- Stream.eval(sql"CREATE TABLE if not exists ${testTable} (i text)".update.run.transact(xa))
+      _ <- Stream.eval(sql"truncate table ${testTable}".update.run.transact(xa))
       _ <- Stream.eval(
-        sql"INSERT INTO stream_cancel_test select 1 from generate_series(1, $count)".update.run.transact(xa))
+        sql"INSERT INTO ${testTable} select 1 from generate_series(1, $count)".update.run.transact(xa))
     } yield ()
 
     insert.compile.drain.unsafeRunSync()
@@ -66,7 +70,7 @@ class StreamPrefetchSuite extends munit.FunSuite {
       ExecutionContext.fromExecutor(Executors.newFixedThreadPool(32))
     )
 
-    val streamLargerBuffer = fr"select * from stream_cancel_test".query[Int].streamWithChunkSize(200).transact(xa)
+    val streamLargerBuffer = fr"select * from ${testTable}".query[Int].streamWithChunkSize(200).transact(xa)
       .evalMap(_ => fr"select 1".query[Int].unique.transact(xa))
       .compile.count
 
@@ -74,7 +78,7 @@ class StreamPrefetchSuite extends munit.FunSuite {
   }
 
   test("Connection is not returned after consuming only 1 chunk, if chunk size is smaller than result count") {
-    val streamSmallerBuffer = fr"select * from stream_cancel_test".query[Int].streamWithChunkSize(10).transact(xa)
+    val streamSmallerBuffer = fr"select * from ${testTable}".query[Int].streamWithChunkSize(10).transact(xa)
       .evalMap(_ => fr"select 1".query[Int].unique.transact(xa))
       .compile.count
 
@@ -92,7 +96,7 @@ class StreamPrefetchSuite extends munit.FunSuite {
     val earlyClose = new AtomicBoolean(false)
 
     val streamSmallerBufferValid =
-      fr"select * from stream_cancel_test".query[Int].streamWithChunkSize(10).transact(xaCopy)
+      fr"select * from ${testTable}".query[Int].streamWithChunkSize(10).transact(xaCopy)
         .evalMap { _ => IO { if (hasClosed.get()) earlyClose.set(true) } >> IO.sleep(10.milliseconds) }
         .compile.count
 
