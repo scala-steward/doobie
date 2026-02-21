@@ -68,7 +68,7 @@ jobs:
         run: sbt scalafmtCheckAll 'project /' scalafmtSbtCheck
 
       - name: Test
-        run: sbt freeGen2 test
+        run: sbt freeGen2 headerCreateAll test
 
       - name: Check binary compatibility
         if: matrix.java == 'temurin@11' && matrix.os == 'ubuntu-22.04'

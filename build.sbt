@@ -59,8 +59,10 @@ ThisBuild / githubWorkflowBuild := {
   current.map {
     // Assume step "Test" exists.
     // Prepend command "freeGen2" to the command list of that step.
+    // Also make sure we run headerCreateAll first and let it complete for all subprojects,
+    // otherwise "test" might see half-written files
     case testStep: WorkflowStep.Sbt if testStep.name.contains("Test") =>
-      WorkflowStep.Sbt("freeGen2" :: testStep.commands, name = Some("Test"))
+      WorkflowStep.Sbt("freeGen2" :: "headerCreateAll" :: testStep.commands, name = Some("Test"))
     case other => other
   }
 }
