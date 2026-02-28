@@ -6,23 +6,24 @@ package doobie.otel4s
 
 import cats.effect.IO
 import doobie.Transactor
+import doobie.Update
 import doobie.otel4s.syntax.fragment.*
 import doobie.syntax.all.*
-import io.opentelemetry.api.trace.SpanKind
+import io.opentelemetry.api.trace.{SpanKind, StatusCode}
 import io.opentelemetry.sdk.resources.Resource as OTelResource
-import io.opentelemetry.sdk.trace.data.{EventData, SpanData}
+import io.opentelemetry.sdk.trace.data.{EventData, SpanData, StatusData}
 import munit.TestOptions
 import org.typelevel.otel4s.oteljava.AttributeConverters.*
 import org.typelevel.otel4s.oteljava.testkit.trace.TracesTestkit
 import org.typelevel.otel4s.oteljava.testkit.{InstrumentationScope, TelemetryResource}
-import org.typelevel.otel4s.semconv.attributes.{DbAttributes, ExceptionAttributes}
+import org.typelevel.otel4s.semconv.attributes.{DbAttributes, ErrorAttributes, ExceptionAttributes}
 import org.typelevel.otel4s.trace.TracerProvider
 import org.typelevel.otel4s.{Attribute, Attributes}
 
 import scala.jdk.CollectionConverters.*
 
 class TracedTransactorSuite extends munit.CatsEffectSuite {
-  import TracedInterpreter.CaptureConfig
+  import QueryCaptureConfig.{QueryParametersPolicy, QueryTextPolicy}
 
   private val xa = Transactor.fromDriverManager[IO](
     driver = "org.h2.Driver",
@@ -35,7 +36,7 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
   private val telemetryResource = TelemetryResource(Attributes.empty)
   private val doobieInstrumentationScope = InstrumentationScope(
     name = "doobie",
-    version = None,
+    version = Some(doobie.buildinfo.version),
     schemaUrl = None,
     attributes = Attributes.empty
   )
@@ -84,9 +85,11 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
       Span(
         name = "executeQuery",
         attributes = Attributes(
+          ErrorAttributes.ErrorType("org.h2.jdbc.JdbcSQLDataException"),
           DbAttributes.DbResponseStatusCode("22018"),
           DbAttributes.DbOperationName("executeQuery")
         ),
+        status = StatusData.create(StatusCode.ERROR, "Data conversion error converting \"text\" [22018-240]"),
         events = List(
           Event(
             name = "exception",
@@ -125,11 +128,9 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
     )
 
     val config = tracedConfig(
-      captureQuery = Some(
-        CaptureConfig.CaptureQuery(
-          captureQueryStatementText = true,
-          captureQueryStatementParameters = false
-        )
+      captureQuery = QueryCaptureConfig(
+        queryTextPolicy = QueryTextPolicy.Always,
+        queryParametersPolicy = QueryParametersPolicy.None
       )
     )
 
@@ -156,11 +157,9 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
     )
 
     val config = tracedConfig(
-      captureQuery = Some(
-        CaptureConfig.CaptureQuery(
-          captureQueryStatementText = true,
-          captureQueryStatementParameters = true
-        )
+      captureQuery = QueryCaptureConfig(
+        queryTextPolicy = QueryTextPolicy.Always,
+        queryParametersPolicy = QueryParametersPolicy.All
       )
     )
 
@@ -171,69 +170,123 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
     } yield ()
   }
 
-  testkitTest("capture fragment label as a span name when enabled") { testkit =>
-    val label = "some label"
-
+  testkitTest("record db.operation.batch.size for batch operations") { testkit =>
     val expected = List(
       Span(
-        name = label,
+        name = "executeUpdate",
         attributes = Attributes(
-          DbAttributes.DbOperationName("executeQuery")
+          DbAttributes.DbQueryText("CREATE LOCAL TEMPORARY TABLE TEST_BATCH (int_value INT)"),
+          DbAttributes.DbOperationName("executeUpdate")
         )
       ),
       Span(
-        name = label,
+        name = "executeBatch",
         attributes = Attributes(
-          DbAttributes.DbOperationName("executeUpdate")
+          DbAttributes.DbQueryText("insert into TEST_BATCH (int_value) values (?)"),
+          DbAttributes.DbOperationBatchSize(3L),
+          DbAttributes.DbOperationName("executeBatch")
         )
       )
     )
 
     val config = tracedConfig(
-      captureLabel = Some(CaptureConfig.CaptureLabel.asSpanName)
+      captureQuery = QueryCaptureConfig(
+        queryTextPolicy = QueryTextPolicy.Always,
+        queryParametersPolicy = QueryParametersPolicy.None
+      )
     )
 
     for {
       tx <- testkit.tracedTransactor(config)
-      _ <- sql"select 1".queryWithLabel[Int](label).unique.transact(tx)
-      _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithLabel(label).run.transact(tx)
+      _ <- (for {
+        _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST_BATCH (int_value INT)".update.run
+        _ <- Update[Int]("insert into TEST_BATCH (int_value) values (?)")
+          .updateMany(List(1, 2, 3))
+      } yield ()).transact(tx)
       _ <- testkit.finishedSpans.assertEquals(expected)
     } yield ()
   }
 
-  testkitTest("capture fragment label as an attribute when enabled") { testkit =>
-    val label = "some label"
-
+  testkitTest("semconv config captures query text only for parameterized queries") { testkit =>
     val expected = List(
       Span(
         name = "executeQuery",
         attributes = Attributes(
-          DbAttributes.DbOperationName("executeQuery"),
-          DbAttributes.DbQuerySummary(label)
-        )
-      ),
-      Span(
-        name = "executeUpdate",
-        attributes = Attributes(
-          DbAttributes.DbOperationName("executeUpdate"),
-          DbAttributes.DbQuerySummary(label)
+          DbAttributes.DbSystemName(DbAttributes.DbSystemNameValue.Postgresql),
+          DbAttributes.DbNamespace("doobie"),
+          DbAttributes.DbQueryText("select ?"),
+          DbAttributes.DbOperationName("executeQuery")
         )
       )
     )
 
-    val config = tracedConfig(
-      captureLabel = Some(CaptureConfig.CaptureLabel.asAttribute(DbAttributes.DbQuerySummary))
-    )
+    val config =
+      TracingConfig.recommended(
+        dbSystemName = DbAttributes.DbSystemNameValue.Postgresql,
+        dbNamespace = "doobie"
+      )
 
     for {
       tx <- testkit.tracedTransactor(config)
-      _ <- sql"select 1".queryWithLabel[Int](label).unique.transact(tx)
-      _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithLabel(label).run.transact(tx)
+      _ <- sql"select ${1}".query[Int].unique.transact(tx)
       _ <- testkit.finishedSpans.assertEquals(expected)
     } yield ()
   }
 
-  testkitTest("capture fragment attributes when enabled") { testkit =>
+  testkitTest("semconv config does not capture query text for non-parameterized queries") { testkit =>
+    val expected = List(
+      Span(
+        name = "executeQuery",
+        attributes = Attributes(
+          DbAttributes.DbSystemName(DbAttributes.DbSystemNameValue.Postgresql),
+          DbAttributes.DbNamespace("doobie"),
+          DbAttributes.DbOperationName("executeQuery")
+        )
+      )
+    )
+
+    val config =
+      TracingConfig.recommended(
+        dbSystemName = DbAttributes.DbSystemNameValue.Postgresql,
+        dbNamespace = "doobie"
+      )
+
+    for {
+      tx <- testkit.tracedTransactor(config)
+      _ <- sql"select 1".query[Int].unique.transact(tx)
+      _ <- testkit.finishedSpans.assertEquals(expected)
+    } yield ()
+  }
+
+  testkitTest("capture explicit summary with default parser and span namer") { testkit =>
+    val summary = "summary via syntax"
+
+    val expected = List(
+      Span(
+        name = summary,
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeQuery"),
+          DbAttributes.DbQuerySummary(summary)
+        )
+      ),
+      Span(
+        name = summary,
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeUpdate"),
+          DbAttributes.DbQuerySummary(summary)
+        )
+      )
+    )
+
+    for {
+      tx <- testkit.tracedTransactor(tracedConfig())
+      _ <- sql"select 1".queryWithSummary[Int](summary).unique.transact(tx)
+      _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithSummary(summary).run.transact(tx)
+      _ <- testkit.finishedSpans.assertEquals(expected)
+    } yield ()
+  }
+
+  testkitTest("capture explicit attributes with default parser") { testkit =>
     val attrs = Attributes(Attribute("test.attr", "ok"))
 
     val expected = List(
@@ -251,19 +304,93 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
       )
     )
 
-    val config = tracedConfig(
-      captureLabel = Some(CaptureConfig.CaptureLabel.decodeAttributes(None, None))
-    )
-
     for {
-      tx <- testkit.tracedTransactor(config)
+      tx <- testkit.tracedTransactor(tracedConfig())
       _ <- sql"select 1".queryWithAttributes[Int](attrs).unique.transact(tx)
       _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithAttributes(attrs).run.transact(tx)
       _ <- testkit.finishedSpans.assertEquals(expected)
     } yield ()
   }
 
-  testkitTest("capture fragment attributes when enabled - use as a span name") { testkit =>
+  testkitTest("use custom span namer") { testkit =>
+    val config = tracedConfig().withSpanNamer(new SpanNamer {
+      def spanName(context: SpanNamer.Context): Option[String] =
+        context.attributes
+          .flatMap(_.get(DbAttributes.DbQuerySummary).map(_.value))
+          .map(summary => s"sql:$summary")
+    })
+
+    val summary = "named"
+    val expected = List(
+      Span(
+        name = "sql:named",
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeQuery"),
+          DbAttributes.DbQuerySummary(summary)
+        )
+      )
+    )
+
+    for {
+      tx <- testkit.tracedTransactor(config)
+      _ <- sql"select 1".queryWithSummary[Int](summary).unique.transact(tx)
+      _ <- testkit.finishedSpans.assertEquals(expected)
+    } yield ()
+  }
+
+  testkitTest("ignore plain fragment labels by default") { testkit =>
+    val label = "some label"
+
+    val expected = List(
+      Span(
+        name = "executeQuery",
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeQuery")
+        )
+      ),
+      Span(
+        name = "executeUpdate",
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeUpdate")
+        )
+      )
+    )
+
+    for {
+      tx <- testkit.tracedTransactor(tracedConfig())
+      _ <- sql"select 1".queryWithLabel[Int](label).unique.transact(tx)
+      _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithLabel(label).run.transact(tx)
+      _ <- testkit.finishedSpans.assertEquals(expected)
+    } yield ()
+  }
+
+  testkitTest("capture fragment attributes") { testkit =>
+    val attrs = Attributes(Attribute("test.attr", "ok"))
+
+    val expected = List(
+      Span(
+        name = "executeQuery",
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeQuery")
+        ) ++ attrs
+      ),
+      Span(
+        name = "executeUpdate",
+        attributes = Attributes(
+          DbAttributes.DbOperationName("executeUpdate")
+        ) ++ attrs
+      )
+    )
+
+    for {
+      tx <- testkit.tracedTransactor(tracedConfig())
+      _ <- sql"select 1".queryWithAttributes[Int](attrs).unique.transact(tx)
+      _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithAttributes(attrs).run.transact(tx)
+      _ <- testkit.finishedSpans.assertEquals(expected)
+    } yield ()
+  }
+
+  testkitTest("capture fragment attributes and use summary as span name") { testkit =>
     val summary = "the summary"
     val attrs = Attributes(
       DbAttributes.DbQuerySummary(summary),
@@ -285,24 +412,15 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
       )
     )
 
-    val config = tracedConfig(
-      captureLabel = Some(
-        CaptureConfig.CaptureLabel.decodeAttributes(
-          spanNameFromAttribute = Some(DbAttributes.DbQuerySummary),
-          fallback = None
-        )
-      )
-    )
-
     for {
-      tx <- testkit.tracedTransactor(config)
+      tx <- testkit.tracedTransactor(tracedConfig())
       _ <- sql"select 1".queryWithAttributes[Int](attrs).unique.transact(tx)
       _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithAttributes(attrs).run.transact(tx)
       _ <- testkit.finishedSpans.assertEquals(expected)
     } yield ()
   }
 
-  testkitTest("capture fragment attributes when enabled - do nothing when unparsable") { testkit =>
+  testkitTest("ignore plain fragment labels when parser cannot parse") { testkit =>
     val label = "some label"
 
     val expected = List(
@@ -320,51 +438,10 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
       )
     )
 
-    val config = tracedConfig(
-      captureLabel = Some(CaptureConfig.CaptureLabel.decodeAttributes(None, None))
-    )
-
     for {
-      tx <- testkit.tracedTransactor(config)
+      tx <- testkit.tracedTransactor(tracedConfig())
       _ <- sql"select 1".queryWithLabel[Int](label).unique.transact(tx)
       _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithLabel(label).run.transact(tx)
-      _ <- testkit.finishedSpans.assertEquals(expected)
-    } yield ()
-  }
-
-  testkitTest("capture fragment attributes when enabled - use a fallback when unparsable") { testkit =>
-    val summary = "the summary"
-    val attrs = Attributes(Attribute("test.attr", "ok"))
-
-    val expected = List(
-      Span(
-        name = "executeQuery",
-        attributes = Attributes(
-          DbAttributes.DbOperationName("executeQuery"),
-          DbAttributes.DbQuerySummary(summary)
-        )
-      ),
-      Span(
-        name = "executeUpdate",
-        attributes = Attributes(
-          DbAttributes.DbOperationName("executeUpdate")
-        ) ++ attrs
-      )
-    )
-
-    val config = tracedConfig(
-      captureLabel = Some(
-        CaptureConfig.CaptureLabel.decodeAttributes(
-          None,
-          Some(CaptureConfig.CaptureLabel.asAttribute(DbAttributes.DbQuerySummary))
-        )
-      )
-    )
-
-    for {
-      tx <- testkit.tracedTransactor(config)
-      _ <- sql"select 1".queryWithLabel[Int](summary).unique.transact(tx)
-      _ <- sql"CREATE LOCAL TEMPORARY TABLE TEST (int_value INT)".updateWithAttributes(attrs).run.transact(tx)
       _ <- testkit.finishedSpans.assertEquals(expected)
     } yield ()
   }
@@ -380,20 +457,19 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
 
   private def tracedConfig(
       constAttributes: Attributes = Attributes.empty,
-      captureQuery: Option[CaptureConfig.CaptureQuery] = None,
-      captureLabel: Option[CaptureConfig.CaptureLabel] = None
-  ): TracedInterpreter.Config =
-    TracedInterpreter.Config(
+      captureQuery: QueryCaptureConfig = QueryCaptureConfig.disabled
+  ): TracingConfig =
+    TracingConfig(
       tracerScopeName = "doobie",
       defaultSpanName = "doobie:exec",
       constAttributes = constAttributes,
-      captureConfig = TracedInterpreter.CaptureConfig(captureQuery, captureLabel)
+      captureQuery = captureQuery
     )
 
   private class Testkit(testkit: TracesTestkit[IO]) {
     implicit val tracerProvider: TracerProvider[IO] = testkit.tracerProvider
 
-    def tracedTransactor(config: TracedInterpreter.Config): IO[Transactor[IO]] =
+    def tracedTransactor(config: TracingConfig): IO[Transactor[IO]] =
       TracedTransactor.create(xa, config, None)
 
     def finishedSpans: IO[List[Span]] =
@@ -422,6 +498,7 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
       resource: TelemetryResource = telemetryResource,
       scope: InstrumentationScope = doobieInstrumentationScope,
       kind: SpanKind = SpanKind.CLIENT,
+      status: StatusData = StatusData.unset(),
       events: List[Event] = Nil
   )
 
@@ -434,6 +511,7 @@ class TracedTransactorSuite extends munit.CatsEffectSuite {
         resource = TelemetryResource(spanData.getResource),
         scope = InstrumentationScope(spanData.getInstrumentationScopeInfo),
         kind = spanData.getKind,
+        status = spanData.getStatus,
         events = spanData.getEvents.asScala.toList.map(Event.from)
       )
   }
